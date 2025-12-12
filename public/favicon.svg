@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <rect width="64" height="64" rx="14" fill="#E8913A"/>
+
+  <!-- Book icon representing learning -->
+  <path d="M32 12c-8 0-14 5.5-14 12.5 0 7 6 12.5 14 12.5 2.4 0 4-.4 5.5-1.2l6.5 4-2.4-5.5c2.4-2.4 3.2-4.8 3.2-8 0-7-6-12.5-14-12.5z" fill="white"/>
+
+  <!-- Character ក (Khmer letter) stylized -->
+  <text x="32" y="42" font-family="Battambang, serif" font-size="18" font-weight="700" fill="#E8913A" text-anchor="middle">ក</text>
+
+  <!-- Small decorative elements -->
+  <circle cx="50" cy="50" r="6" fill="white" opacity="0.3"/>
+  <circle cx="14" cy="14" r="4" fill="white" opacity="0.2"/>
+</svg>
