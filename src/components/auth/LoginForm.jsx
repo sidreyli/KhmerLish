@@ -15,9 +15,11 @@ export function LoginForm({ onSuccess, onSwitchToSignUp, onForgotPassword }) {
     setLoading(true)
 
     try {
-      await signIn(email, password)
+      const data = await signIn(email, password)
+      console.log('SignIn response:', data)
       onSuccess?.()
     } catch (err) {
+      console.error('SignIn error:', err)
       setError(err.message || 'Failed to sign in')
     } finally {
       setLoading(false)

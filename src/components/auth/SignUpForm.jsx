@@ -9,6 +9,7 @@ export function SignUpForm({ onSuccess, onSwitchToLogin }) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -27,13 +28,45 @@ export function SignUpForm({ onSuccess, onSwitchToLogin }) {
     setLoading(true)
 
     try {
-      await signUp(email, password)
-      onSuccess?.()
+      const data = await signUp(email, password)
+      console.log('SignUp response:', data)
+
+      // Check if email confirmation is required
+      if (data?.user && !data?.session) {
+        // User created but no session = email confirmation required
+        setEmailSent(true)
+      } else if (data?.session) {
+        // User logged in immediately (email confirmation disabled)
+        onSuccess?.()
+      }
     } catch (err) {
+      console.error('SignUp error:', err)
       setError(err.message || 'Failed to create account')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (emailSent) {
+    return (
+      <div className="auth-form">
+        <h2 className="auth-title">Check Your Email</h2>
+        <p className="auth-subtitle">
+          We've sent a confirmation link to <strong>{email}</strong>
+        </p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '16px' }}>
+          Click the link in the email to activate your account, then come back here to sign in.
+        </p>
+        <button
+          type="button"
+          className="auth-submit"
+          onClick={onSwitchToLogin}
+          style={{ marginTop: '24px' }}
+        >
+          Back to Sign In
+        </button>
+      </div>
+    )
   }
 
   return (

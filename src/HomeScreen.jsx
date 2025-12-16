@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { useDueReviewsCount, useLearnedWordsCount } from './hooks/useVocabulary'
-import { useContinueLearning, useOverallStats } from './hooks/useProgress'
+import { useContinueLearning, useOverallStats, useUserSettings } from './hooks/useProgress'
 
 // Time-aware greeting function
 const getGreeting = () => {
@@ -363,6 +363,7 @@ function HomeScreen() {
   const { data: wordsLearned = 0, isLoading: wordsLoading } = useLearnedWordsCount()
   const { data: continueLearning, isLoading: continueLoading } = useContinueLearning()
   const { data: overallStats, isLoading: statsLoading } = useOverallStats()
+  const { data: userSettings } = useUserSettings()
 
   // Calculate level from XP
   const xp = profile?.xp || 0
@@ -372,8 +373,8 @@ function HomeScreen() {
   // Get display name
   const displayName = profile?.display_name || 'Friend'
 
-  // Daily goal (from settings, default 10)
-  const dailyGoal = 10
+  // Daily goal from user settings (default 10)
+  const dailyGoal = userSettings?.daily_goal || 10
   const dailyProgress = Math.min(100, ((overallStats?.dueReviews || 0) > 0 ? 50 : 100))
 
   const hasReviews = dueReviewsCount > 0

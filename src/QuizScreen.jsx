@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQuizQuestions, useSaveQuizAttempt } from './hooks/useQuiz'
+import { useLesson } from './hooks/useLessons'
 
 // ============================================
 // QUIZ SCREEN COMPONENT
-// Multiple question types with feedback
+// Dynamic quiz with multiple question types
 // ============================================
 
 // Close Button with Confirmation
@@ -34,7 +36,6 @@ const CloseButton = ({ onClose }) => {
         </svg>
       </button>
 
-      {/* Confirmation Modal */}
       {showConfirm && (
         <div style={{
           position: 'fixed',
@@ -130,7 +131,7 @@ const QuizHeader = ({ current, total, timer, onClose }) => {
       borderBottom: '1px solid var(--color-border-light)',
     }}>
       <CloseButton onClose={onClose} />
-      
+
       <div style={{ flex: 1 }}>
         <div style={{
           display: 'flex',
@@ -212,15 +213,15 @@ const HintButton = ({ hint, isRevealed, onReveal }) => (
 )
 
 // Answer Option Card
-const AnswerOption = ({ 
-  label, 
-  text, 
-  isSelected, 
-  isCorrect, 
+const AnswerOption = ({
+  label,
+  text,
+  isSelected,
+  isCorrect,
   isWrong,
   showResult,
   onClick,
-  disabled 
+  disabled
 }) => {
   let background = 'var(--color-surface)'
   let border = '2px solid var(--color-border)'
@@ -298,7 +299,7 @@ const AnswerOption = ({
 }
 
 // Audio Player Button
-const AudioPlayer = ({ isPlaying, onPlay, replaysLeft, totalReplays }) => (
+const AudioPlayer = ({ audioUrl, isPlaying, onPlay, replaysLeft, totalReplays }) => (
   <div style={{
     display: 'flex',
     flexDirection: 'column',
@@ -309,7 +310,6 @@ const AudioPlayer = ({ isPlaying, onPlay, replaysLeft, totalReplays }) => (
     borderRadius: 'var(--radius-xl)',
     marginBottom: 'var(--space-4)',
   }}>
-    {/* Waveform visualization */}
     <div style={{
       display: 'flex',
       alignItems: 'center',
@@ -339,8 +339,8 @@ const AudioPlayer = ({ isPlaying, onPlay, replaysLeft, totalReplays }) => (
         width: 72,
         height: 72,
         borderRadius: 'var(--radius-full)',
-        background: replaysLeft === 0 
-          ? 'var(--color-border)' 
+        background: replaysLeft === 0
+          ? 'var(--color-border)'
           : 'linear-gradient(135deg, var(--color-secondary) 0%, var(--color-secondary-dark) 100%)',
         border: 'none',
         display: 'flex',
@@ -375,7 +375,7 @@ const AudioPlayer = ({ isPlaying, onPlay, replaysLeft, totalReplays }) => (
 )
 
 // Image Display
-const ImageDisplay = ({ emoji, label }) => (
+const ImageDisplay = ({ emoji, imageUrl, label }) => (
   <div style={{
     width: '100%',
     height: 160,
@@ -387,8 +387,13 @@ const ImageDisplay = ({ emoji, label }) => (
     justifyContent: 'center',
     marginBottom: 'var(--space-4)',
     border: '2px solid var(--color-border-light)',
+    overflow: 'hidden',
   }}>
-    <span style={{ fontSize: '4rem' }}>{emoji}</span>
+    {imageUrl ? (
+      <img src={imageUrl} alt={label} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+    ) : (
+      <span style={{ fontSize: '4rem' }}>{emoji || '📖'}</span>
+    )}
     {label && (
       <span style={{
         fontFamily: 'var(--font-english)',
@@ -403,9 +408,9 @@ const ImageDisplay = ({ emoji, label }) => (
 )
 
 // Fill in Blank Sentence
-const FillInBlank = ({ sentence, blankIndex }) => {
+const FillInBlank = ({ sentence }) => {
   const parts = sentence.split('___')
-  
+
   return (
     <div style={{
       padding: 'var(--space-5)',
@@ -489,6 +494,7 @@ const FeedbackSection = ({ isCorrect, correctAnswer, explanation, onNext }) => (
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: '1.2rem',
+        color: 'white',
       }}>
         {isCorrect ? '✓' : '✗'}
       </span>
@@ -532,8 +538,8 @@ const FeedbackSection = ({ isCorrect, correctAnswer, explanation, onNext }) => (
       style={{
         width: '100%',
         padding: '14px',
-        background: isCorrect 
-          ? 'var(--color-success)' 
+        background: isCorrect
+          ? 'var(--color-success)'
           : 'var(--color-error)',
         border: 'none',
         borderRadius: 'var(--radius-md)',
@@ -565,8 +571,8 @@ const SubmitButton = ({ disabled, loading, onClick }) => (
     style={{
       width: '100%',
       padding: '16px',
-      background: disabled 
-        ? 'var(--color-border-light)' 
+      background: disabled
+        ? 'var(--color-border-light)'
         : 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%)',
       border: 'none',
       borderRadius: 'var(--radius-lg)',
@@ -602,16 +608,18 @@ const SubmitButton = ({ disabled, loading, onClick }) => (
   </button>
 )
 
-// Question Type 1: Multiple Choice
-const MultipleChoiceQuestion = ({ onNext }) => {
+// Dynamic Question Component
+const QuizQuestion = ({ question, onAnswer, onNext }) => {
   const [selected, setSelected] = useState(null)
   const [showHint, setShowHint] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showXP, setShowXP] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [replaysLeft, setReplaysLeft] = useState(3)
 
-  const correctAnswer = 0 // Index A
-  const isCorrect = selected === correctAnswer
+  const correctOption = question.options.find(opt => opt.is_correct)
+  const isCorrect = selected !== null && question.options[selected]?.is_correct
 
   const handleSubmit = () => {
     setLoading(true)
@@ -619,139 +627,153 @@ const MultipleChoiceQuestion = ({ onNext }) => {
       setLoading(false)
       setShowResult(true)
       if (isCorrect) setShowXP(true)
+      onAnswer({
+        questionId: question.id,
+        userAnswer: question.options[selected]?.option_text,
+        isCorrect,
+      })
     }, 800)
   }
 
-  const options = [
-    { label: 'A', text: 'សួស្តី' },
-    { label: 'B', text: 'លាហើយ' },
-    { label: 'C', text: 'អរគុណ' },
-    { label: 'D', text: 'សុខសប្បាយ' },
-  ]
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, padding: 'var(--space-4)', overflow: 'auto' }}>
-        <XPFloat show={showXP} amount={10} />
-        
-        <div style={{ marginBottom: 'var(--space-4)' }}>
-          <p style={{
-            fontFamily: 'var(--font-english)',
-            fontSize: 'var(--text-h3)',
-            fontWeight: 600,
-            color: 'var(--color-text-primary)',
-            marginBottom: 'var(--space-3)',
-          }}>
-            What does "Hello" mean?
-          </p>
-          <HintButton 
-            hint="តើ 'Hello' មានន័យថាអ្វី?"
-            isRevealed={showHint}
-            onReveal={() => setShowHint(true)}
-          />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {options.map((opt, idx) => (
-            <AnswerOption
-              key={idx}
-              label={opt.label}
-              text={opt.text}
-              isSelected={selected === idx}
-              isCorrect={idx === correctAnswer}
-              isWrong={selected === idx && idx !== correctAnswer}
-              showResult={showResult}
-              onClick={() => !showResult && setSelected(idx)}
-              disabled={showResult}
-            />
-          ))}
-        </div>
-      </div>
-
-      {!showResult ? (
-        <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--color-border-light)' }}>
-          <SubmitButton 
-            disabled={selected === null} 
-            loading={loading}
-            onClick={handleSubmit}
-          />
-        </div>
-      ) : (
-        <FeedbackSection
-          isCorrect={isCorrect}
-          correctAnswer={!isCorrect ? 'សួស្តី' : null}
-          explanation={isCorrect ? '"Hello" ជាពាក្យស្វាគមន៍ទូទៅបំផុតជាភាសាអង់គ្លេស។' : null}
-          onNext={onNext}
-        />
-      )}
-    </div>
-  )
-}
-
-// Question Type 2: Listening
-const ListeningQuestion = ({ onNext }) => {
-  const [selected, setSelected] = useState(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [replaysLeft, setReplaysLeft] = useState(3)
-  const [showResult, setShowResult] = useState(false)
-  const [loading, setLoading] = useState(false)
-
-  const correctAnswer = 1
-  const isCorrect = selected === correctAnswer
-
-  const handlePlay = () => {
-    if (replaysLeft > 0) {
+  const handlePlayAudio = () => {
+    if (replaysLeft > 0 && question.audio_url) {
       setIsPlaying(true)
       setReplaysLeft(prev => prev - 1)
+      // In production, play actual audio
       setTimeout(() => setIsPlaying(false), 2000)
     }
   }
 
-  const handleSubmit = () => {
-    setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      setShowResult(true)
-    }, 800)
+  const handleNext = () => {
+    setSelected(null)
+    setShowHint(false)
+    setShowResult(false)
+    setShowXP(false)
+    setReplaysLeft(3)
+    onNext()
   }
 
-  const options = [
-    { label: 'A', text: 'Hello' },
-    { label: 'B', text: 'Good morning' },
-    { label: 'C', text: 'Good night' },
-    { label: 'D', text: 'Goodbye' },
-  ]
+  // Render based on question type
+  const renderQuestionContent = () => {
+    const questionText = question.question_text || question.question_text_khmer
+
+    switch (question.question_type) {
+      case 'listening':
+        return (
+          <>
+            <p style={{
+              fontFamily: 'var(--font-khmer)',
+              fontSize: 'var(--text-h3)',
+              fontWeight: 600,
+              color: 'var(--color-text-primary)',
+              marginBottom: 'var(--space-4)',
+              textAlign: 'center',
+            }}>
+              {question.question_text_khmer || 'តើអ្នកឮអ្វី?'}
+            </p>
+            <AudioPlayer
+              audioUrl={question.audio_url}
+              isPlaying={isPlaying}
+              onPlay={handlePlayAudio}
+              replaysLeft={replaysLeft}
+              totalReplays={3}
+            />
+          </>
+        )
+
+      case 'image_match':
+        return (
+          <>
+            <p style={{
+              fontFamily: 'var(--font-khmer)',
+              fontSize: 'var(--text-h3)',
+              fontWeight: 600,
+              color: 'var(--color-text-primary)',
+              marginBottom: 'var(--space-4)',
+              textAlign: 'center',
+            }}>
+              {question.question_text_khmer || 'តើរូបនេះជាពាក្យអ្វី?'}
+            </p>
+            <ImageDisplay
+              emoji={question.emoji}
+              imageUrl={question.image_url}
+              label={questionText}
+            />
+          </>
+        )
+
+      case 'fill_blank':
+        return (
+          <>
+            <p style={{
+              fontFamily: 'var(--font-khmer)',
+              fontSize: 'var(--text-body)',
+              color: 'var(--color-text-secondary)',
+              marginBottom: 'var(--space-3)',
+              textAlign: 'center',
+            }}>
+              បំពេញចន្លោះខាងក្រោម:
+            </p>
+            <FillInBlank sentence={questionText} />
+            {question.hint && (
+              <p style={{
+                fontFamily: 'var(--font-khmer)',
+                fontSize: 'var(--text-caption)',
+                color: 'var(--color-text-tertiary)',
+                marginBottom: 'var(--space-4)',
+                textAlign: 'center',
+                padding: '8px 16px',
+                background: 'var(--color-primary-light)',
+                borderRadius: 'var(--radius-md)',
+              }}>
+                💡 {question.hint}
+              </p>
+            )}
+          </>
+        )
+
+      case 'multiple_choice':
+      case 'translation':
+      default:
+        return (
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <p style={{
+              fontFamily: 'var(--font-english)',
+              fontSize: 'var(--text-h3)',
+              fontWeight: 600,
+              color: 'var(--color-text-primary)',
+              marginBottom: 'var(--space-3)',
+            }}>
+              {questionText}
+            </p>
+            {question.hint && (
+              <HintButton
+                hint={question.hint}
+                isRevealed={showHint}
+                onReveal={() => setShowHint(true)}
+              />
+            )}
+          </div>
+        )
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, padding: 'var(--space-4)', overflow: 'auto' }}>
-        <p style={{
-          fontFamily: 'var(--font-khmer)',
-          fontSize: 'var(--text-h3)',
-          fontWeight: 600,
-          color: 'var(--color-text-primary)',
-          marginBottom: 'var(--space-4)',
-          textAlign: 'center',
-        }}>
-          តើអ្នកឮអ្វី?
-        </p>
+      <div style={{ flex: 1, padding: 'var(--space-4)', overflow: 'auto', position: 'relative' }}>
+        <XPFloat show={showXP} amount={10} />
 
-        <AudioPlayer
-          isPlaying={isPlaying}
-          onPlay={handlePlay}
-          replaysLeft={replaysLeft}
-          totalReplays={3}
-        />
+        {renderQuestionContent()}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {options.map((opt, idx) => (
+          {question.options.map((opt, idx) => (
             <AnswerOption
-              key={idx}
-              label={opt.label}
-              text={opt.text}
+              key={opt.id || idx}
+              label={opt.option_label || String.fromCharCode(65 + idx)}
+              text={opt.option_text}
               isSelected={selected === idx}
-              isCorrect={idx === correctAnswer}
-              isWrong={selected === idx && idx !== correctAnswer}
+              isCorrect={opt.is_correct}
+              isWrong={selected === idx && !opt.is_correct}
               showResult={showResult}
               onClick={() => !showResult && setSelected(idx)}
               disabled={showResult}
@@ -762,8 +784,8 @@ const ListeningQuestion = ({ onNext }) => {
 
       {!showResult ? (
         <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--color-border-light)' }}>
-          <SubmitButton 
-            disabled={selected === null} 
+          <SubmitButton
+            disabled={selected === null}
             loading={loading}
             onClick={handleSubmit}
           />
@@ -771,220 +793,247 @@ const ListeningQuestion = ({ onNext }) => {
       ) : (
         <FeedbackSection
           isCorrect={isCorrect}
-          correctAnswer={!isCorrect ? 'Good morning' : null}
-          onNext={onNext}
+          correctAnswer={!isCorrect ? correctOption?.option_text : null}
+          explanation={isCorrect ? question.explanation : null}
+          onNext={handleNext}
         />
       )}
     </div>
   )
 }
 
-// Question Type 3: Image Match
-const ImageMatchQuestion = ({ onNext }) => {
-  const [selected, setSelected] = useState(null)
-  const [showResult, setShowResult] = useState(false)
-  const [loading, setLoading] = useState(false)
-
-  const correctAnswer = 2
-  const isCorrect = selected === correctAnswer
-
-  const handleSubmit = () => {
-    setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      setShowResult(true)
-    }, 800)
-  }
-
-  const options = [
-    { label: 'A', text: 'មិត្តភក្តិ' },
-    { label: 'B', text: 'គ្រូបង្រៀន' },
-    { label: 'C', text: 'គ្រួសារ' },
-    { label: 'D', text: 'ជិតខាង' },
-  ]
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, padding: 'var(--space-4)', overflow: 'auto' }}>
-        <p style={{
-          fontFamily: 'var(--font-khmer)',
-          fontSize: 'var(--text-h3)',
-          fontWeight: 600,
-          color: 'var(--color-text-primary)',
-          marginBottom: 'var(--space-4)',
-          textAlign: 'center',
-        }}>
-          តើរូបនេះជាពាក្យអ្វី?
-        </p>
-
-        <ImageDisplay emoji="👨‍👩‍👧‍👦" label="Family illustration" />
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {options.map((opt, idx) => (
-            <AnswerOption
-              key={idx}
-              label={opt.label}
-              text={opt.text}
-              isSelected={selected === idx}
-              isCorrect={idx === correctAnswer}
-              isWrong={selected === idx && idx !== correctAnswer}
-              showResult={showResult}
-              onClick={() => !showResult && setSelected(idx)}
-              disabled={showResult}
-            />
-          ))}
-        </div>
-      </div>
-
-      {!showResult ? (
-        <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--color-border-light)' }}>
-          <SubmitButton 
-            disabled={selected === null} 
-            loading={loading}
-            onClick={handleSubmit}
-          />
-        </div>
-      ) : (
-        <FeedbackSection
-          isCorrect={isCorrect}
-          correctAnswer={!isCorrect ? 'គ្រួសារ (Family)' : null}
-          onNext={onNext}
-        />
-      )}
-    </div>
-  )
-}
-
-// Question Type 4: Fill in Blank
-const FillInBlankQuestion = ({ onNext }) => {
-  const [selected, setSelected] = useState(null)
-  const [showResult, setShowResult] = useState(false)
-  const [loading, setLoading] = useState(false)
-
-  const correctAnswer = 0
-  const isCorrect = selected === correctAnswer
-
-  const handleSubmit = () => {
-    setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      setShowResult(true)
-    }, 800)
-  }
-
-  const options = [
-    { label: 'A', text: 'morning' },
-    { label: 'B', text: 'night' },
-    { label: 'C', text: 'hello' },
-    { label: 'D', text: 'bye' },
-  ]
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, padding: 'var(--space-4)', overflow: 'auto' }}>
-        <p style={{
-          fontFamily: 'var(--font-khmer)',
-          fontSize: 'var(--text-body)',
-          color: 'var(--color-text-secondary)',
-          marginBottom: 'var(--space-3)',
-          textAlign: 'center',
-        }}>
-          បំពេញចន្លោះខាងក្រោម:
-        </p>
-
-        <FillInBlank sentence="Good ___, how are you?" />
-
-        <p style={{
-          fontFamily: 'var(--font-khmer)',
-          fontSize: 'var(--text-caption)',
-          color: 'var(--color-text-tertiary)',
-          marginBottom: 'var(--space-4)',
-          textAlign: 'center',
-          padding: '8px 16px',
-          background: 'var(--color-primary-light)',
-          borderRadius: 'var(--radius-md)',
-        }}>
-          💡 គំនិត: នេះជាពាក្យស្វាគមន៍នៅពេលព្រឹក
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {options.map((opt, idx) => (
-            <AnswerOption
-              key={idx}
-              label={opt.label}
-              text={opt.text}
-              isSelected={selected === idx}
-              isCorrect={idx === correctAnswer}
-              isWrong={selected === idx && idx !== correctAnswer}
-              showResult={showResult}
-              onClick={() => !showResult && setSelected(idx)}
-              disabled={showResult}
-            />
-          ))}
-        </div>
-      </div>
-
-      {!showResult ? (
-        <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--color-border-light)' }}>
-          <SubmitButton 
-            disabled={selected === null} 
-            loading={loading}
-            onClick={handleSubmit}
-          />
-        </div>
-      ) : (
-        <FeedbackSection
-          isCorrect={isCorrect}
-          correctAnswer={!isCorrect ? 'morning' : null}
-          explanation={isCorrect ? '"Good morning" ប្រើពេលស្វាគមន៍នៅពេលព្រឹក។' : null}
-          onNext={onNext}
-        />
-      )}
-    </div>
-  )
-}
-
-// Question Type Tab
-const QuestionTypeTab = ({ label, isActive, onClick }) => (
-  <button
-    onClick={onClick}
-    style={{
-      flex: 1,
-      padding: '10px 8px',
-      background: isActive ? 'var(--color-primary)' : 'transparent',
-      border: 'none',
-      borderRadius: 'var(--radius-md)',
-      fontFamily: 'var(--font-english)',
-      fontSize: '0.7rem',
-      fontWeight: 600,
-      color: isActive ? 'white' : 'var(--color-text-secondary)',
-      cursor: 'pointer',
-      transition: 'all var(--transition-fast)',
-      whiteSpace: 'nowrap',
-    }}
-  >
-    {label}
-  </button>
+// Loading Skeleton
+const LoadingSkeleton = () => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    background: 'var(--color-background)',
+    padding: 'var(--space-5)',
+  }}>
+    <div className="loading-spinner" style={{ marginBottom: 'var(--space-4)' }} />
+    <p style={{
+      fontFamily: 'var(--font-khmer)',
+      fontSize: 'var(--text-body)',
+      color: 'var(--color-text-secondary)',
+    }}>
+      កំពុងផ្ទុកតេស្ត...
+    </p>
+  </div>
 )
+
+// Error State
+const ErrorState = ({ message, onRetry }) => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    background: 'var(--color-background)',
+    padding: 'var(--space-5)',
+    textAlign: 'center',
+  }}>
+    <span style={{ fontSize: '3rem', marginBottom: 'var(--space-3)' }}>😔</span>
+    <h2 style={{
+      fontFamily: 'var(--font-khmer)',
+      fontSize: 'var(--text-h3)',
+      color: 'var(--color-text-primary)',
+      marginBottom: 'var(--space-2)',
+    }}>
+      មានបញ្ហាកើតឡើង
+    </h2>
+    <p style={{
+      fontFamily: 'var(--font-english)',
+      fontSize: 'var(--text-caption)',
+      color: 'var(--color-text-secondary)',
+      marginBottom: 'var(--space-4)',
+    }}>
+      {message || 'Could not load quiz'}
+    </p>
+    <button
+      onClick={onRetry}
+      style={{
+        padding: '12px 24px',
+        background: 'var(--color-primary)',
+        border: 'none',
+        borderRadius: 'var(--radius-md)',
+        fontFamily: 'var(--font-khmer)',
+        fontSize: 'var(--text-body)',
+        fontWeight: 600,
+        color: 'white',
+        cursor: 'pointer',
+      }}
+    >
+      ព្យាយាមម្តងទៀត
+    </button>
+  </div>
+)
+
+// Empty State - No Questions
+const EmptyState = ({ onBack }) => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    background: 'var(--color-background)',
+    padding: 'var(--space-5)',
+    textAlign: 'center',
+  }}>
+    <span style={{ fontSize: '3rem', marginBottom: 'var(--space-3)' }}>📝</span>
+    <h2 style={{
+      fontFamily: 'var(--font-khmer)',
+      fontSize: 'var(--text-h3)',
+      color: 'var(--color-text-primary)',
+      marginBottom: 'var(--space-2)',
+    }}>
+      មិនទាន់មានសំណួរ
+    </h2>
+    <p style={{
+      fontFamily: 'var(--font-khmer)',
+      fontSize: 'var(--text-caption)',
+      color: 'var(--color-text-secondary)',
+      marginBottom: 'var(--space-4)',
+    }}>
+      មេរៀននេះមិនទាន់មានសំណួរតេស្តទេ
+    </p>
+    <button
+      onClick={onBack}
+      style={{
+        padding: '12px 24px',
+        background: 'var(--color-primary)',
+        border: 'none',
+        borderRadius: 'var(--radius-md)',
+        fontFamily: 'var(--font-khmer)',
+        fontSize: 'var(--text-body)',
+        fontWeight: 600,
+        color: 'white',
+        cursor: 'pointer',
+      }}
+    >
+      ត្រឡប់ក្រោយ
+    </button>
+  </div>
+)
+
+// Format time as MM:SS
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
 
 // Main Quiz Screen Component
 function QuizScreen() {
-  const [questionType, setQuestionType] = useState('multiple')
-  const [currentQuestion, setCurrentQuestion] = useState(3)
-
-  const questionTypes = [
-    { id: 'multiple', label: 'Multiple' },
-    { id: 'listening', label: 'Listening' },
-    { id: 'image', label: 'Image' },
-    { id: 'fillblank', label: 'Fill Blank' },
-  ]
-
-  const handleNext = () => {
-    setCurrentQuestion(prev => Math.min(prev + 1, 10))
-  }
-
   const navigate = useNavigate()
   const { lessonId } = useParams()
+
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [answers, setAnswers] = useState([])
+  const [elapsedTime, setElapsedTime] = useState(0)
+  const startTimeRef = useRef(Date.now())
+  const timerRef = useRef(null)
+
+  // Fetch quiz questions
+  const {
+    data: questions,
+    isLoading,
+    error,
+    refetch
+  } = useQuizQuestions(lessonId)
+
+  // Fetch lesson info for results
+  const { data: lesson } = useLesson(lessonId)
+
+  // Save quiz attempt mutation
+  const saveAttempt = useSaveQuizAttempt()
+
+  // Timer effect
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000))
+    }, 1000)
+
+    return () => clearInterval(timerRef.current)
+  }, [])
+
+  const handleAnswer = (answerData) => {
+    setAnswers(prev => [...prev, {
+      ...answerData,
+      timeTaken: Math.floor((Date.now() - startTimeRef.current) / 1000) -
+        answers.reduce((acc, a) => acc + (a.timeTaken || 0), 0)
+    }])
+  }
+
+  const handleNext = () => {
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(prev => prev + 1)
+    } else {
+      // Quiz complete - save and navigate to results
+      handleQuizComplete()
+    }
+  }
+
+  const handleQuizComplete = async () => {
+    clearInterval(timerRef.current)
+
+    const correctCount = answers.filter(a => a.isCorrect).length
+    const totalQuestions = questions.length
+    const scorePercent = Math.round((correctCount / totalQuestions) * 100)
+    const passed = scorePercent >= 70
+    const xpEarned = passed ? Math.round(scorePercent / 2) : 10
+
+    const attemptData = {
+      scorePercent,
+      correctCount,
+      totalQuestions,
+      timeTaken: elapsedTime,
+      xpEarned,
+      passed,
+      answers,
+      startedAt: new Date(startTimeRef.current).toISOString(),
+    }
+
+    try {
+      await saveAttempt.mutateAsync({ lessonId, attemptData })
+    } catch (err) {
+      console.error('Failed to save quiz attempt:', err)
+    }
+
+    // Navigate to results
+    navigate(`/quiz/${lessonId}/results`, {
+      state: {
+        scorePercent,
+        correctCount,
+        totalQuestions,
+        timeTaken: elapsedTime,
+        xpEarned,
+        passed,
+        lessonTitle: lesson?.title_khmer,
+      }
+    })
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return <LoadingSkeleton />
+  }
+
+  // Show error state
+  if (error) {
+    return <ErrorState message={error.message} onRetry={refetch} />
+  }
+
+  // Show empty state if no questions
+  if (!questions || questions.length === 0) {
+    return <EmptyState onBack={() => navigate(-1)} />
+  }
+
+  const currentQuestion = questions[currentIndex]
 
   return (
     <div className="screen screen-fullscreen" style={{
@@ -997,35 +1046,35 @@ function QuizScreen() {
         .icon-btn:hover {
           transform: scale(1.1);
         }
-        
+
         .icon-btn:active {
           transform: scale(0.95);
         }
-        
+
         .answer-option:hover {
           transform: translateX(4px);
           box-shadow: var(--shadow-md);
         }
-        
+
         .submit-btn:hover {
           transform: translateY(-2px);
           box-shadow: 0 8px 32px rgba(232, 145, 58, 0.5) !important;
         }
-        
+
         .audio-btn:hover {
           transform: scale(1.05);
         }
-        
+
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
           25% { transform: translateX(-8px); }
           75% { transform: translateX(8px); }
         }
-        
+
         .shake {
           animation: shake 0.4s ease-in-out;
         }
-        
+
         @keyframes floatUp {
           0% {
             opacity: 1;
@@ -1036,7 +1085,7 @@ function QuizScreen() {
             transform: translateX(-50%) translateY(-60px);
           }
         }
-        
+
         @keyframes slideUp {
           from {
             opacity: 0;
@@ -1047,37 +1096,34 @@ function QuizScreen() {
             transform: translateY(0);
           }
         }
-        
+
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        
+
         @keyframes wave {
           0% { height: 8px; }
           100% { height: 32px; }
-        }
-        
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
         }
       `}</style>
 
       {/* Header */}
       <QuizHeader
-        current={currentQuestion}
-        total={10}
-        timer="02:45"
+        current={currentIndex + 1}
+        total={questions.length}
+        timer={formatTime(elapsedTime)}
         onClose={() => navigate(-1)}
       />
 
       {/* Question Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {questionType === 'multiple' && <MultipleChoiceQuestion onNext={handleNext} />}
-        {questionType === 'listening' && <ListeningQuestion onNext={handleNext} />}
-        {questionType === 'image' && <ImageMatchQuestion onNext={handleNext} />}
-        {questionType === 'fillblank' && <FillInBlankQuestion onNext={handleNext} />}
+        <QuizQuestion
+          key={currentQuestion.id}
+          question={currentQuestion}
+          onAnswer={handleAnswer}
+          onNext={handleNext}
+        />
       </div>
     </div>
   )

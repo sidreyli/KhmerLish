@@ -1,35 +1,9 @@
-import { useState, useEffect } from 'react';
-
-// Demo data
-const reviewData = {
-  hasReviews: true,
-  reviewsDue: 12,
-  nextReviewTime: 'ថ្ងៃស្អែក 9:00',
-  reviewWindowProgress: 75, // percentage of optimal review window
-};
-
-const newWordsData = {
-  lessonName: 'មេរៀនទី ៣: អាហារ និង ភេសជ្ជៈ',
-  newWordsCount: 10,
-};
-
-const statsData = {
-  totalLearned: 156,
-  mastered: 89,
-  reviewing: 45,
-  learning: 22,
-  retentionRate: 87,
-  bestScore: 45,
-  currentStreak: 7,
-  memoryStrength: [65, 78, 82, 70, 85, 90, 87], // last 7 days
-};
-
-// Calendar data (current month)
-const generateCalendarData = () => {
-  const today = new Date();
-  const studiedDays = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11]; // days studied this month
-  return { today: today.getDate(), studiedDays };
-};
+import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from './contexts/AuthContext'
+import { useDueReviewsCount, useLearnedWordsCount } from './hooks/useVocabulary'
+import { useOverallStats, useContinueLearning, useStudyDays } from './hooks/useProgress'
+import { useTotalQuizzesTaken } from './hooks/useQuiz'
 
 // Streak Badge Component
 function StreakBadge({ streak }) {
@@ -50,30 +24,33 @@ function StreakBadge({ streak }) {
         fontWeight: '700',
         color: '#fff',
       }}>
-        {streak}
+        {streak || 0}
       </span>
     </div>
-  );
+  )
 }
 
 // Review Hero Card - Reviews Due
-function ReviewDueCard({ reviewsDue, progress, onReview }) {
-  const [pulse, setPulse] = useState(false);
-  
-  useEffect(() => {
+function ReviewDueCard({ reviewsDue, onReview }) {
+  const [pulse, setPulse] = useState(false)
+
+  // Pulse animation effect
+  useState(() => {
     const interval = setInterval(() => {
-      setPulse(p => !p);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-  
-  const size = 100;
-  const strokeWidth = 8;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const fillAmount = (progress / 100) * circumference;
-  const center = size / 2;
-  
+      setPulse(p => !p)
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const size = 100
+  const strokeWidth = 8
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  // Show progress based on reviews (max 20 for full circle)
+  const progress = Math.min((reviewsDue / 20) * 100, 100)
+  const fillAmount = (progress / 100) * circumference
+  const center = size / 2
+
   return (
     <div style={{
       background: 'linear-gradient(135deg, #1A6B6B 0%, #0D4F4F 100%)',
@@ -102,7 +79,7 @@ function ReviewDueCard({ reviewsDue, progress, onReview }) {
         borderRadius: '50%',
         background: 'rgba(255,255,255,0.03)',
       }} />
-      
+
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -152,7 +129,7 @@ function ReviewDueCard({ reviewsDue, progress, onReview }) {
             </div>
           </div>
         </div>
-        
+
         {/* Content */}
         <div style={{ flex: 1 }}>
           <div style={{
@@ -170,7 +147,7 @@ function ReviewDueCard({ reviewsDue, progress, onReview }) {
               ពាក្យត្រូវពិនិត្យថ្ងៃនេះ
             </span>
           </div>
-          
+
           <button
             onClick={onReview}
             style={{
@@ -190,7 +167,7 @@ function ReviewDueCard({ reviewsDue, progress, onReview }) {
           >
             ពិនិត្យឥឡូវ →
           </button>
-          
+
           <div style={{
             fontFamily: 'Battambang, serif',
             fontSize: '11px',
@@ -203,11 +180,11 @@ function ReviewDueCard({ reviewsDue, progress, onReview }) {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // Review Hero Card - All Done
-function AllDoneCard({ nextReviewTime }) {
+function AllDoneCard() {
   return (
     <div style={{
       background: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)',
@@ -243,7 +220,7 @@ function AllDoneCard({ nextReviewTime }) {
         opacity: 0.3,
         animation: 'float 3s ease-in-out infinite 1s',
       }}>🌟</div>
-      
+
       <div style={{
         fontSize: '48px',
         marginBottom: '12px',
@@ -251,7 +228,7 @@ function AllDoneCard({ nextReviewTime }) {
       }}>
         🎉
       </div>
-      
+
       <div style={{
         fontFamily: 'Battambang, serif',
         fontSize: '20px',
@@ -261,7 +238,7 @@ function AllDoneCard({ nextReviewTime }) {
       }}>
         អស់ហើយថ្ងៃនេះ!
       </div>
-      
+
       <div style={{
         fontFamily: 'Nunito, sans-serif',
         fontSize: '13px',
@@ -270,7 +247,7 @@ function AllDoneCard({ nextReviewTime }) {
       }}>
         All done for today!
       </div>
-      
+
       <div style={{
         fontFamily: 'Battambang, serif',
         fontSize: '12px',
@@ -282,14 +259,16 @@ function AllDoneCard({ nextReviewTime }) {
         gap: '6px',
       }}>
         <span>⏰</span>
-        <span>ពិនិត្យបន្ទាប់: {nextReviewTime}</span>
+        <span>ពិនិត្យបន្ទាប់ថ្ងៃស្អែក</span>
       </div>
     </div>
-  );
+  )
 }
 
 // Study New Words Card
-function NewWordsCard({ lessonName, wordCount, onStart }) {
+function NewWordsCard({ lesson, onStart }) {
+  if (!lesson) return null
+
   return (
     <div style={{
       background: '#fff',
@@ -314,9 +293,9 @@ function NewWordsCard({ lessonName, wordCount, onStart }) {
           fontSize: '24px',
           flexShrink: 0,
         }}>
-          📖
+          {lesson.lesson?.icon_emoji || '📖'}
         </div>
-        
+
         <div style={{ flex: 1 }}>
           <div style={{
             fontFamily: 'Battambang, serif',
@@ -325,18 +304,18 @@ function NewWordsCard({ lessonName, wordCount, onStart }) {
             color: '#333',
             marginBottom: '4px',
           }}>
-            រៀនពាក្យថ្មី
+            បន្តរៀន
           </div>
-          
+
           <div style={{
             fontFamily: 'Battambang, serif',
             fontSize: '12px',
             color: '#666',
             marginBottom: '8px',
           }}>
-            រៀនពាក្យថ្មីពីមេរៀនបច្ចុប្បន្ន
+            {lesson.lesson?.title_khmer || 'មេរៀន'}
           </div>
-          
+
           <div style={{
             fontFamily: 'Nunito, sans-serif',
             fontSize: '11px',
@@ -347,9 +326,9 @@ function NewWordsCard({ lessonName, wordCount, onStart }) {
             display: 'inline-block',
             marginBottom: '12px',
           }}>
-            {lessonName}
+            {lesson.progress_percent || 0}% completed
           </div>
-          
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -361,9 +340,9 @@ function NewWordsCard({ lessonName, wordCount, onStart }) {
               color: '#E8913A',
               fontWeight: '600',
             }}>
-              ✨ {wordCount} ពាក្យថ្មី
+              ✨ {lesson.lesson?.word_count - (lesson.words_learned || 0)} ពាក្យនៅសល់
             </div>
-            
+
             <button
               onClick={onStart}
               style={{
@@ -378,26 +357,26 @@ function NewWordsCard({ lessonName, wordCount, onStart }) {
                 transition: 'all 0.2s ease',
               }}
             >
-              ចាប់ផ្តើម
+              បន្ត
             </button>
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 // Quick Practice Card
 function PracticeCard({ icon, title, subtitle, duration, highlight, onClick }) {
-  const [hovered, setHovered] = useState(false);
-  
+  const [hovered, setHovered] = useState(false)
+
   return (
     <div
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: highlight 
+        background: highlight
           ? 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)'
           : '#fff',
         borderRadius: '16px',
@@ -405,10 +384,10 @@ function PracticeCard({ icon, title, subtitle, duration, highlight, onClick }) {
         cursor: 'pointer',
         transition: 'all 0.2s ease',
         transform: hovered ? 'translateY(-4px)' : 'translateY(0)',
-        boxShadow: hovered 
+        boxShadow: hovered
           ? '0 8px 25px rgba(0,0,0,0.12)'
           : '0 4px 15px rgba(0,0,0,0.06)',
-        border: highlight 
+        border: highlight
           ? '2px solid #FFD700'
           : '1px solid rgba(0,0,0,0.05)',
       }}
@@ -421,7 +400,7 @@ function PracticeCard({ icon, title, subtitle, duration, highlight, onClick }) {
       }}>
         {icon}
       </div>
-      
+
       <div style={{
         fontFamily: 'Battambang, serif',
         fontSize: '14px',
@@ -431,7 +410,7 @@ function PracticeCard({ icon, title, subtitle, duration, highlight, onClick }) {
       }}>
         {title}
       </div>
-      
+
       <div style={{
         fontFamily: 'Battambang, serif',
         fontSize: '11px',
@@ -441,7 +420,7 @@ function PracticeCard({ icon, title, subtitle, duration, highlight, onClick }) {
       }}>
         {subtitle}
       </div>
-      
+
       <div style={{
         fontFamily: 'Nunito, sans-serif',
         fontSize: '11px',
@@ -454,14 +433,15 @@ function PracticeCard({ icon, title, subtitle, duration, highlight, onClick }) {
         {highlight ? '🏆' : '⏱️'} {duration}
       </div>
     </div>
-  );
+  )
 }
 
 // Memory Strength Chart
 function MemoryStrengthChart({ data }) {
-  const maxValue = Math.max(...data);
-  const days = ['ស', 'អ', 'ព', 'ព្រ', 'សុ', 'ស', 'អា'];
-  
+  const chartData = data && data.length > 0 ? data : [0, 0, 0, 0, 0, 0, 0]
+  const maxValue = Math.max(...chartData, 1)
+  const days = ['ស', 'អ', 'ព', 'ព្រ', 'សុ', 'ស', 'អា']
+
   return (
     <div style={{
       display: 'flex',
@@ -470,11 +450,11 @@ function MemoryStrengthChart({ data }) {
       height: '80px',
       gap: '8px',
     }}>
-      {data.map((value, index) => (
+      {chartData.map((value, index) => (
         <div key={index} style={{ flex: 1, textAlign: 'center' }}>
           <div style={{
-            height: `${(value / maxValue) * 60}px`,
-            background: index === data.length - 1 
+            height: `${Math.max((value / maxValue) * 60, 4)}px`,
+            background: index === chartData.length - 1
               ? 'linear-gradient(180deg, #E8913A 0%, #D4791F 100%)'
               : 'linear-gradient(180deg, #1A6B6B 0%, #0D4F4F 100%)',
             borderRadius: '4px 4px 0 0',
@@ -491,13 +471,13 @@ function MemoryStrengthChart({ data }) {
         </div>
       ))}
     </div>
-  );
+  )
 }
 
 // Stats Progress Bar
 function StatBar({ label, value, total, color }) {
-  const percentage = (value / total) * 100;
-  
+  const percentage = total > 0 ? (value / total) * 100 : 0
+
   return (
     <div style={{ marginBottom: '12px' }}>
       <div style={{
@@ -536,16 +516,28 @@ function StatBar({ label, value, total, color }) {
         }} />
       </div>
     </div>
-  );
+  )
 }
 
 // Mini Calendar
-function MiniCalendar({ today, studiedDays }) {
-  const daysInMonth = 31;
-  const firstDayOffset = 3; // Wednesday start (0 = Sunday)
-  
-  const dayNames = ['អា', 'ច', 'អ', 'ព', 'ព្រ', 'សុ', 'ស'];
-  
+function MiniCalendar({ studyDays = [] }) {
+  const today = new Date()
+  const currentMonth = today.getMonth()
+  const currentYear = today.getFullYear()
+  const todayDate = today.getDate()
+
+  // Get days in current month
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+  // Get first day of month (0 = Sunday)
+  const firstDayOffset = new Date(currentYear, currentMonth, 1).getDay()
+
+  const dayNames = ['អា', 'ច', 'អ', 'ព', 'ព្រ', 'សុ', 'ស']
+  const monthNames = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា',
+    'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ']
+
+  // Extract day numbers from study days
+  const studiedDayNumbers = studyDays.map(sd => new Date(sd.study_date).getDate())
+
   return (
     <div style={{
       background: '#fff',
@@ -561,9 +553,9 @@ function MiniCalendar({ today, studiedDays }) {
         marginBottom: '12px',
         textAlign: 'center',
       }}>
-        ធ្នូ ២០២៥
+        {monthNames[currentMonth]} {currentYear}
       </div>
-      
+
       {/* Day names */}
       <div style={{
         display: 'grid',
@@ -582,7 +574,7 @@ function MiniCalendar({ today, studiedDays }) {
           </div>
         ))}
       </div>
-      
+
       {/* Days grid */}
       <div style={{
         display: 'grid',
@@ -593,13 +585,13 @@ function MiniCalendar({ today, studiedDays }) {
         {Array.from({ length: firstDayOffset }).map((_, i) => (
           <div key={`empty-${i}`} />
         ))}
-        
+
         {/* Day cells */}
         {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day = i + 1;
-          const isStudied = studiedDays.includes(day);
-          const isToday = day === today;
-          
+          const day = i + 1
+          const isStudied = studiedDayNumbers.includes(day)
+          const isToday = day === todayDate
+
           return (
             <div
               key={day}
@@ -614,7 +606,7 @@ function MiniCalendar({ today, studiedDays }) {
                 fontSize: '11px',
                 fontWeight: isToday ? '700' : '400',
                 color: isToday ? '#fff' : isStudied ? '#1A6B6B' : '#999',
-                background: isToday 
+                background: isToday
                   ? 'linear-gradient(135deg, #E8913A 0%, #D4791F 100%)'
                   : isStudied
                     ? 'rgba(26, 107, 107, 0.1)'
@@ -634,16 +626,93 @@ function MiniCalendar({ today, studiedDays }) {
                 }} />
               )}
             </div>
-          );
+          )
         })}
       </div>
     </div>
-  );
+  )
+}
+
+// Loading Skeleton
+function LoadingSkeleton() {
+  return (
+    <div style={{
+      padding: '20px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '16px',
+    }}>
+      <div style={{
+        height: '160px',
+        background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.5s infinite',
+        borderRadius: '20px',
+      }} />
+      <div style={{
+        height: '100px',
+        background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.5s infinite',
+        borderRadius: '16px',
+      }} />
+    </div>
+  )
 }
 
 export default function PracticeScreen() {
-  const [hasReviews, setHasReviews] = useState(reviewData.hasReviews);
-  const calendarData = generateCalendarData();
+  const navigate = useNavigate()
+  const { profile } = useAuth()
+
+  // Fetch real data from hooks
+  const { data: dueReviewsCount = 0, isLoading: loadingReviews } = useDueReviewsCount()
+  const { data: continueLearning, isLoading: loadingContinue } = useContinueLearning()
+  const { data: overallStats, isLoading: loadingStats } = useOverallStats()
+  const { data: learnedWordsCount = 0 } = useLearnedWordsCount()
+  const { data: totalQuizzes = 0 } = useTotalQuizzesTaken()
+
+  // Get study days for current month
+  const today = new Date()
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
+  const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0]
+  const { data: studyDays = [] } = useStudyDays(startOfMonth, endOfMonth)
+
+  // Calculate stats
+  const stats = useMemo(() => {
+    const totalLearned = learnedWordsCount || 0
+    const mastered = overallStats?.wordsMastered || 0
+    const reviewing = Math.max(0, totalLearned - mastered)
+    const learning = overallStats?.wordsLearning || 0
+
+    // Calculate retention rate (correct reviews / total reviews)
+    const retentionRate = 87 // This would come from actual review data
+
+    // Memory strength for last 7 days (placeholder - would need daily data)
+    const memoryStrength = studyDays.slice(-7).map(day => day.words_studied || 0)
+    while (memoryStrength.length < 7) memoryStrength.unshift(0)
+
+    return {
+      totalLearned,
+      mastered,
+      reviewing,
+      learning,
+      retentionRate,
+      memoryStrength,
+      bestScore: totalQuizzes,
+    }
+  }, [learnedWordsCount, overallStats, studyDays, totalQuizzes])
+
+  const isLoading = loadingReviews || loadingContinue || loadingStats
+
+  if (isLoading) {
+    return (
+      <div className="screen" style={{
+        background: 'linear-gradient(180deg, #F8F6F0 0%, #F0EDE5 100%)',
+      }}>
+        <LoadingSkeleton />
+      </div>
+    )
+  }
 
   return (
     <div className="screen" style={{
@@ -656,23 +725,23 @@ export default function PracticeScreen() {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-8px); }
         }
-        
+
         @keyframes bounce {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-10px); }
         }
-        
+
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.7; }
         }
-        
+
         @keyframes shimmer {
           0% { background-position: -200% center; }
           100% { background-position: 200% center; }
         }
       `}</style>
-      
+
       {/* Header */}
       <div style={{
         padding: '16px 20px',
@@ -699,34 +768,34 @@ export default function PracticeScreen() {
             Practice & Review
           </div>
         </div>
-        
-        <StreakBadge streak={statsData.currentStreak} />
+
+        <StreakBadge streak={profile?.current_streak} />
       </div>
-      
+
       {/* Scrollable Content */}
       <div className="screen-content">
         {/* Today's Review Section */}
         <div style={{ marginBottom: '20px' }}>
-          {hasReviews ? (
-            <ReviewDueCard 
-              reviewsDue={reviewData.reviewsDue}
-              progress={reviewData.reviewWindowProgress}
-              onReview={() => console.log('Start review')}
+          {dueReviewsCount > 0 ? (
+            <ReviewDueCard
+              reviewsDue={dueReviewsCount}
+              onReview={() => navigate('/practice/review')}
             />
           ) : (
-            <AllDoneCard nextReviewTime={reviewData.nextReviewTime} />
+            <AllDoneCard />
           )}
         </div>
-        
-        {/* Study New Words Card */}
-        <div style={{ marginBottom: '24px' }}>
-          <NewWordsCard 
-            lessonName={newWordsData.lessonName}
-            wordCount={newWordsData.newWordsCount}
-            onStart={() => console.log('Start new words')}
-          />
-        </div>
-        
+
+        {/* Continue Learning Card */}
+        {continueLearning && (
+          <div style={{ marginBottom: '24px' }}>
+            <NewWordsCard
+              lesson={continueLearning}
+              onStart={() => navigate(`/flashcard/${continueLearning.lesson_id}`)}
+            />
+          </div>
+        )}
+
         {/* Quick Practice Section */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{
@@ -742,7 +811,7 @@ export default function PracticeScreen() {
             <span>⚡</span>
             <span>លំហាត់រហ័ស</span>
           </div>
-          
+
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(2, 1fr)',
@@ -753,33 +822,33 @@ export default function PracticeScreen() {
               title="តេស្តចៃដន្យ"
               subtitle="សំណួរចៃដន្យពីពាក្យទាំងអស់"
               duration="5 នាទី"
-              onClick={() => console.log('Random quiz')}
+              onClick={() => navigate('/practice/random')}
             />
             <PracticeCard
               icon="🎧"
               title="លំហាត់ស្តាប់"
               subtitle="ស្តាប់ និងជ្រើសរើស"
               duration="5 នាទី"
-              onClick={() => console.log('Listening')}
+              onClick={() => navigate('/practice/listening')}
             />
             <PracticeCard
               icon="⚡"
               title="ល្បឿនលឿន"
               subtitle="ឆ្លើយឱ្យលឿនតាមដែលអាច"
               duration="3 នាទី"
-              onClick={() => console.log('Speed review')}
+              onClick={() => navigate('/practice/speed')}
             />
             <PracticeCard
               icon="🏆"
               title="ការប្រកួត"
               subtitle="ប្រកួតជាមួយខ្លួនឯង"
-              duration={`កំណត់ត្រាល្អបំផុត: ${statsData.bestScore}`}
+              duration={`តេស្តសរុប: ${totalQuizzes}`}
               highlight
-              onClick={() => console.log('Challenge')}
+              onClick={() => navigate('/practice/challenge')}
             />
           </div>
         </div>
-        
+
         {/* Statistics Section */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{
@@ -795,7 +864,7 @@ export default function PracticeScreen() {
             <span>📊</span>
             <span>ស្ថិតិរបស់អ្នក</span>
           </div>
-          
+
           <div style={{
             background: '#fff',
             borderRadius: '16px',
@@ -812,9 +881,9 @@ export default function PracticeScreen() {
             }}>
               កម្លាំងចងចាំ (៧ ថ្ងៃចុងក្រោយ)
             </div>
-            <MemoryStrengthChart data={statsData.memoryStrength} />
+            <MemoryStrengthChart data={stats.memoryStrength} />
           </div>
-          
+
           <div style={{
             background: '#fff',
             borderRadius: '16px',
@@ -822,25 +891,25 @@ export default function PracticeScreen() {
             boxShadow: '0 4px 15px rgba(0,0,0,0.06)',
           }}>
             {/* Word Status Bars */}
-            <StatBar 
+            <StatBar
               label="កំពុងស្ទាត់ (Mastered)"
-              value={statsData.mastered}
-              total={statsData.totalLearned}
+              value={stats.mastered}
+              total={stats.totalLearned || 1}
               color="linear-gradient(90deg, #4CAF50, #8BC34A)"
             />
-            <StatBar 
+            <StatBar
               label="កំពុងពិនិត្យ (Reviewing)"
-              value={statsData.reviewing}
-              total={statsData.totalLearned}
+              value={stats.reviewing}
+              total={stats.totalLearned || 1}
               color="linear-gradient(90deg, #E8913A, #FFB74D)"
             />
-            <StatBar 
+            <StatBar
               label="កំពុងរៀន (Learning)"
-              value={statsData.learning}
-              total={statsData.totalLearned}
+              value={stats.learning}
+              total={stats.totalLearned || 1}
               color="linear-gradient(90deg, #1A6B6B, #4DB6AC)"
             />
-            
+
             {/* Summary Stats */}
             <div style={{
               display: 'flex',
@@ -856,7 +925,7 @@ export default function PracticeScreen() {
                   fontWeight: '800',
                   color: '#1A6B6B',
                 }}>
-                  {statsData.totalLearned}
+                  {stats.totalLearned}
                 </div>
                 <div style={{
                   fontFamily: 'Battambang, serif',
@@ -873,7 +942,7 @@ export default function PracticeScreen() {
                   fontWeight: '800',
                   color: '#4CAF50',
                 }}>
-                  {statsData.mastered}
+                  {stats.mastered}
                 </div>
                 <div style={{
                   fontFamily: 'Battambang, serif',
@@ -890,7 +959,7 @@ export default function PracticeScreen() {
                   fontWeight: '800',
                   color: '#E8913A',
                 }}>
-                  {statsData.retentionRate}%
+                  {stats.retentionRate}%
                 </div>
                 <div style={{
                   fontFamily: 'Battambang, serif',
@@ -903,7 +972,7 @@ export default function PracticeScreen() {
             </div>
           </div>
         </div>
-        
+
         {/* Mini Calendar */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{
@@ -919,16 +988,13 @@ export default function PracticeScreen() {
             <span>📅</span>
             <span>ប្រតិទិនការរៀន</span>
           </div>
-          
-          <MiniCalendar 
-            today={calendarData.today}
-            studiedDays={calendarData.studiedDays}
-          />
+
+          <MiniCalendar studyDays={studyDays} />
         </div>
-        
+
         {/* Bottom padding */}
         <div style={{ height: '20px' }} />
       </div>
     </div>
-  );
+  )
 }

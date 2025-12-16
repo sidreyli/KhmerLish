@@ -1,29 +1,44 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from './contexts/AuthContext'
+import { useAchievements, useOverallStats } from './hooks/useProgress'
+import { useLearnedWordsCount } from './hooks/useVocabulary'
+import { useTotalQuizzesTaken } from './hooks/useQuiz'
 
-// Demo data
-const userData = {
-  name: 'សុភា',
-  nameEnglish: 'Sopha',
-  initials: 'សុ',
-  level: 'A1',
-  levelName: 'អ្នកចាប់ផ្តើម',
-  memberSince: 'មករា ២០២៥',
-  xp: 1240,
-  streak: 7,
-  wordsLearned: 156,
-  lessonsCompleted: 12,
-  phone: '+855 ** *** 234',
-  lastSync: 'ថ្ងៃនេះ 10:30',
-};
+// Calculate level from XP
+const calculateLevel = (xp) => {
+  const thresholds = [0, 100, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000]
+  const levelNames = [
+    { level: 'A1', name: 'អ្នកចាប់ផ្តើម' },
+    { level: 'A1', name: 'អ្នកចាប់ផ្តើម' },
+    { level: 'A1', name: 'អ្នកចាប់ផ្តើម' },
+    { level: 'A2', name: 'បឋម' },
+    { level: 'A2', name: 'បឋម' },
+    { level: 'B1', name: 'មធ្យម' },
+    { level: 'B1', name: 'មធ្យម' },
+    { level: 'B2', name: 'កម្រិតខ្ពស់' },
+    { level: 'B2', name: 'កម្រិតខ្ពស់' },
+    { level: 'C1', name: 'ជំនាញ' },
+  ]
 
-const achievements = [
-  { id: 1, icon: '🌟', title: 'មេរៀនដំបូង', titleEn: 'First Lesson', earned: true },
-  { id: 2, icon: '🔥', title: '7 ថ្ងៃ Streak', titleEn: '7 Day Streak', earned: true },
-  { id: 3, icon: '📚', title: '100 ពាក្យ', titleEn: '100 Words', earned: true },
-  { id: 4, icon: '⭐', title: 'Perfect Quiz', titleEn: 'Perfect Quiz', earned: false },
-  { id: 5, icon: '💯', title: '500 ពាក្យ', titleEn: '500 Words', earned: false, progress: '156/500' },
-  { id: 6, icon: '🏆', title: '30 ថ្ងៃ Streak', titleEn: '30 Day Streak', earned: false },
-];
+  let currentLevel = 0
+  for (let i = 0; i < thresholds.length; i++) {
+    if (xp >= thresholds[i]) {
+      currentLevel = i
+    }
+  }
+
+  const nextThreshold = thresholds[currentLevel + 1] || thresholds[thresholds.length - 1]
+  const currentThreshold = thresholds[currentLevel]
+  const progress = ((xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100
+
+  return {
+    level: levelNames[currentLevel].level,
+    name: levelNames[currentLevel].name,
+    progress: Math.min(progress, 100),
+    xpToNext: nextThreshold - xp,
+  }
+}
 
 // Avatar Component
 function Avatar({ initials, size = 100, showEdit = false, onEdit }) {
@@ -46,10 +61,10 @@ function Avatar({ initials, size = 100, showEdit = false, onEdit }) {
           fontWeight: '700',
           color: '#fff',
         }}>
-          {initials}
+          {initials || '?'}
         </span>
       </div>
-      
+
       {showEdit && (
         <button
           onClick={onEdit}
@@ -73,7 +88,7 @@ function Avatar({ initials, size = 100, showEdit = false, onEdit }) {
         </button>
       )}
     </div>
-  );
+  )
 }
 
 // Level Badge
@@ -109,7 +124,7 @@ function LevelBadge({ level, levelName }) {
         {levelName}
       </span>
     </div>
-  );
+  )
 }
 
 // Stat Card
@@ -141,18 +156,21 @@ function StatCard({ icon, value, label }) {
         {label}
       </div>
     </div>
-  );
+  )
 }
 
 // Achievement Badge
 function AchievementBadge({ achievement }) {
-  const { icon, title, titleEn, earned, progress } = achievement;
-  
+  const earned = !!achievement.earned_at
+  const icon = achievement.achievement?.emoji || '🏅'
+  const title = achievement.achievement?.title_khmer || achievement.title_khmer
+  const progress = achievement.progress
+
   return (
     <div style={{
       minWidth: '100px',
       padding: '16px 12px',
-      background: earned 
+      background: earned
         ? 'linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%)'
         : 'rgba(0,0,0,0.04)',
       borderRadius: '16px',
@@ -198,7 +216,7 @@ function AchievementBadge({ achievement }) {
         </div>
       )}
     </div>
-  );
+  )
 }
 
 // Setting Item
@@ -228,7 +246,7 @@ function SettingItem({ icon, title, subtitle, children, onClick, danger }) {
       }}>
         {icon}
       </div>
-      
+
       <div style={{ flex: 1 }}>
         <div style={{
           fontFamily: 'Battambang, serif',
@@ -249,10 +267,10 @@ function SettingItem({ icon, title, subtitle, children, onClick, danger }) {
           </div>
         )}
       </div>
-      
+
       {children}
     </div>
-  );
+  )
 }
 
 // Toggle Switch
@@ -264,7 +282,7 @@ function Toggle({ value, onChange }) {
         width: '50px',
         height: '28px',
         borderRadius: '14px',
-        background: value 
+        background: value
           ? 'linear-gradient(135deg, #1A6B6B 0%, #0D4F4F 100%)'
           : '#E0E0E0',
         padding: '2px',
@@ -282,7 +300,7 @@ function Toggle({ value, onChange }) {
         transition: 'transform 0.2s ease',
       }} />
     </div>
-  );
+  )
 }
 
 // Theme Selector
@@ -291,8 +309,8 @@ function ThemeSelector({ value, onChange }) {
     { id: 'light', label: '☀️' },
     { id: 'dark', label: '🌙' },
     { id: 'system', label: '⚙️' },
-  ];
-  
+  ]
+
   return (
     <div style={{
       display: 'flex',
@@ -320,13 +338,13 @@ function ThemeSelector({ value, onChange }) {
         </button>
       ))}
     </div>
-  );
+  )
 }
 
 // Storage Progress
 function StorageProgress({ used, total }) {
-  const percentage = (used / total) * 100;
-  
+  const percentage = (used / total) * 100
+
   return (
     <div>
       <div style={{
@@ -358,14 +376,14 @@ function StorageProgress({ used, total }) {
         <div style={{
           height: '100%',
           width: `${percentage}%`,
-          background: percentage > 80 
+          background: percentage > 80
             ? 'linear-gradient(90deg, #FF9800, #F44336)'
             : 'linear-gradient(90deg, #1A6B6B, #4DB6AC)',
           borderRadius: '4px',
         }} />
       </div>
     </div>
-  );
+  )
 }
 
 // Section Header
@@ -388,7 +406,7 @@ function SectionHeader({ title, icon }) {
         {title}
       </span>
     </div>
-  );
+  )
 }
 
 // Confirmation Modal
@@ -458,7 +476,7 @@ function ConfirmModal({ title, message, confirmText, cancelText, onConfirm, onCa
               padding: '12px',
               borderRadius: '12px',
               border: 'none',
-              background: danger 
+              background: danger
                 ? 'linear-gradient(135deg, #F44336 0%, #D32F2F 100%)'
                 : 'linear-gradient(135deg, #1A6B6B 0%, #0D4F4F 100%)',
               fontFamily: 'Battambang, serif',
@@ -472,16 +490,119 @@ function ConfirmModal({ title, message, confirmText, cancelText, onConfirm, onCa
         </div>
       </div>
     </div>
-  );
+  )
 }
 
+// Loading Skeleton
+function LoadingSkeleton() {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      paddingTop: '60px',
+    }}>
+      <div style={{
+        width: 100,
+        height: 100,
+        borderRadius: '50%',
+        background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.5s infinite',
+        marginBottom: '16px',
+      }} />
+      <div style={{
+        width: 120,
+        height: 24,
+        background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.5s infinite',
+        borderRadius: '8px',
+        marginBottom: '8px',
+      }} />
+      <div style={{
+        width: 80,
+        height: 32,
+        background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.5s infinite',
+        borderRadius: '16px',
+      }} />
+    </div>
+  )
+}
+
+// Default achievements for users without any
+const defaultAchievements = [
+  { id: 1, achievement: { emoji: '🌟', title_khmer: 'មេរៀនដំបូង', title_english: 'First Lesson' }, earned_at: null },
+  { id: 2, achievement: { emoji: '🔥', title_khmer: '7 ថ្ងៃ Streak', title_english: '7 Day Streak' }, earned_at: null },
+  { id: 3, achievement: { emoji: '📚', title_khmer: '100 ពាក្យ', title_english: '100 Words' }, earned_at: null },
+  { id: 4, achievement: { emoji: '⭐', title_khmer: 'Perfect Quiz', title_english: 'Perfect Quiz' }, earned_at: null },
+  { id: 5, achievement: { emoji: '💯', title_khmer: '500 ពាក្យ', title_english: '500 Words' }, earned_at: null },
+  { id: 6, achievement: { emoji: '🏆', title_khmer: '30 ថ្ងៃ Streak', title_english: '30 Day Streak' }, earned_at: null },
+]
+
 export default function ProfileScreen() {
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [theme, setTheme] = useState('light');
-  const [reminderTime, setReminderTime] = useState('09:00');
-  const [showSignOutModal, setShowSignOutModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const navigate = useNavigate()
+  const { profile, signOut, isLoading: authLoading } = useAuth()
+
+  // Fetch real data
+  const { data: achievements = [] } = useAchievements()
+  const { data: overallStats } = useOverallStats()
+  const { data: learnedWordsCount = 0 } = useLearnedWordsCount()
+  const { data: totalQuizzes = 0 } = useTotalQuizzesTaken()
+
+  // Settings state
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+  const [theme, setTheme] = useState('light')
+  const [reminderTime, setReminderTime] = useState('09:00')
+  const [showSignOutModal, setShowSignOutModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  // Calculate user level from XP
+  const levelInfo = useMemo(() => {
+    return calculateLevel(profile?.xp || 0)
+  }, [profile?.xp])
+
+  // Get user initials
+  const initials = useMemo(() => {
+    if (!profile?.display_name) return '?'
+    return profile.display_name.charAt(0).toUpperCase()
+  }, [profile?.display_name])
+
+  // Member since date
+  const memberSince = useMemo(() => {
+    if (!profile?.created_at) return ''
+    const date = new Date(profile.created_at)
+    const monthNames = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា',
+      'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ']
+    return `${monthNames[date.getMonth()]} ${date.getFullYear()}`
+  }, [profile?.created_at])
+
+  // Use real achievements or defaults
+  const displayAchievements = achievements.length > 0 ? achievements : defaultAchievements
+
+  const handleSignOut = async () => {
+    await signOut()
+    navigate('/login')
+  }
+
+  if (authLoading) {
+    return (
+      <div className="screen" style={{
+        background: 'linear-gradient(180deg, #F8F6F0 0%, #F0EDE5 100%)',
+      }}>
+        <style>{`
+          @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+          }
+        `}</style>
+        <LoadingSkeleton />
+      </div>
+    )
+  }
 
   return (
     <div className="screen" style={{
@@ -491,22 +612,27 @@ export default function ProfileScreen() {
       {/* CSS Animations */}
       <style>{`
         @keyframes modalSlideUp {
-          from { 
+          from {
             opacity: 0;
             transform: translateY(20px);
           }
-          to { 
+          to {
             opacity: 1;
             transform: translateY(0);
           }
         }
-        
+
         @keyframes pulse {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.05); }
         }
+
+        @keyframes shimmer {
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
       `}</style>
-      
+
       {/* Scrollable Content */}
       <div>
         {/* Profile Header */}
@@ -541,14 +667,14 @@ export default function ProfileScreen() {
             zIndex: 0,
             pointerEvents: 'none',
           }} />
-          
-          <Avatar 
-            initials={userData.initials}
+
+          <Avatar
+            initials={initials}
             size={100}
             showEdit
             onEdit={() => console.log('Edit avatar')}
           />
-          
+
           <div style={{
             fontFamily: 'Battambang, serif',
             fontSize: '24px',
@@ -557,30 +683,30 @@ export default function ProfileScreen() {
             marginTop: '16px',
             marginBottom: '4px',
           }}>
-            {userData.name}
+            {profile?.display_name || 'អ្នកប្រើប្រាស់'}
           </div>
-          
+
           <div style={{
             fontFamily: 'Nunito, sans-serif',
             fontSize: '14px',
             color: 'rgba(255,255,255,0.7)',
             marginBottom: '12px',
           }}>
-            {userData.nameEnglish}
+            {profile?.email || ''}
           </div>
-          
-          <LevelBadge level={userData.level} levelName={userData.levelName} />
-          
+
+          <LevelBadge level={levelInfo.level} levelName={levelInfo.name} />
+
           <div style={{
             fontFamily: 'Battambang, serif',
             fontSize: '12px',
             color: 'rgba(255,255,255,0.6)',
             marginTop: '12px',
           }}>
-            ចាប់ពី {userData.memberSince}
+            ចាប់ពី {memberSince}
           </div>
         </div>
-        
+
         {/* Stats Cards - Overlapping header */}
         <div style={{
           padding: '0 20px',
@@ -593,18 +719,18 @@ export default function ProfileScreen() {
             gridTemplateColumns: 'repeat(2, 1fr)',
             gap: '12px',
           }}>
-            <StatCard icon="⭐" value={userData.xp.toLocaleString()} label="XP" />
-            <StatCard icon="🔥" value={`${userData.streak} ថ្ងៃ`} label="Streak" />
-            <StatCard icon="📖" value={userData.wordsLearned} label="ពាក្យ" />
-            <StatCard icon="✅" value={userData.lessonsCompleted} label="មេរៀន" />
+            <StatCard icon="⭐" value={(profile?.xp || 0).toLocaleString()} label="XP" />
+            <StatCard icon="🔥" value={`${profile?.current_streak || 0} ថ្ងៃ`} label="Streak" />
+            <StatCard icon="📖" value={learnedWordsCount} label="ពាក្យ" />
+            <StatCard icon="✅" value={overallStats?.lessonsCompleted || 0} label="មេរៀន" />
           </div>
         </div>
-        
+
         {/* Main Content */}
         <div style={{ padding: '0 20px 40px', position: 'relative', zIndex: 2 }}>
           {/* Achievements Section */}
           <SectionHeader icon="🏅" title="សមិទ្ធិផល" />
-          
+
           <div style={{
             display: 'flex',
             gap: '12px',
@@ -615,52 +741,52 @@ export default function ProfileScreen() {
             paddingLeft: '20px',
             paddingRight: '20px',
           }}>
-            {achievements.map(achievement => (
-              <AchievementBadge key={achievement.id} achievement={achievement} />
+            {displayAchievements.map((achievement, idx) => (
+              <AchievementBadge key={achievement.id || idx} achievement={achievement} />
             ))}
           </div>
-          
+
           {/* Settings Section */}
           <SectionHeader icon="⚙️" title="ការកំណត់" />
-          
+
           <div style={{
             background: '#fff',
             borderRadius: '16px',
             padding: '4px 16px',
             boxShadow: '0 4px 15px rgba(0,0,0,0.06)',
           }}>
-            <SettingItem 
-              icon="🌐" 
+            <SettingItem
+              icon="🌐"
               title="ភាសា"
               subtitle="ខ្មែរ"
               onClick={() => console.log('Change language')}
             >
               <span style={{ color: '#999', fontSize: '18px' }}>›</span>
             </SettingItem>
-            
-            <SettingItem 
-              icon="🎨" 
+
+            <SettingItem
+              icon="🎨"
               title="ស្បែក"
             >
               <ThemeSelector value={theme} onChange={setTheme} />
             </SettingItem>
-            
-            <SettingItem 
-              icon="🔊" 
+
+            <SettingItem
+              icon="🔊"
               title="សំឡេង"
             >
               <Toggle value={soundEnabled} onChange={setSoundEnabled} />
             </SettingItem>
-            
-            <SettingItem 
-              icon="🔔" 
+
+            <SettingItem
+              icon="🔔"
               title="ការជូនដំណឹង"
             >
               <Toggle value={notificationsEnabled} onChange={setNotificationsEnabled} />
             </SettingItem>
-            
-            <SettingItem 
-              icon="⏰" 
+
+            <SettingItem
+              icon="⏰"
               title="រំលឹកប្រចាំថ្ងៃ"
             >
               <input
@@ -678,10 +804,10 @@ export default function ProfileScreen() {
               />
             </SettingItem>
           </div>
-          
+
           {/* Storage Section */}
           <SectionHeader icon="💾" title="ទំហំផ្ទុក" />
-          
+
           <div style={{
             background: '#fff',
             borderRadius: '16px',
@@ -689,7 +815,7 @@ export default function ProfileScreen() {
             boxShadow: '0 4px 15px rgba(0,0,0,0.06)',
           }}>
             <StorageProgress used={45} total={500} />
-            
+
             <div style={{
               fontFamily: 'Battambang, serif',
               fontSize: '13px',
@@ -697,9 +823,9 @@ export default function ProfileScreen() {
               marginTop: '12px',
               marginBottom: '16px',
             }}>
-              មេរៀនបានទាញយក: <strong style={{ color: '#333' }}>5</strong>
+              មេរៀនបានទាញយក: <strong style={{ color: '#333' }}>0</strong>
             </div>
-            
+
             <div style={{ display: 'flex', gap: '12px' }}>
               <button style={{
                 flex: 1,
@@ -729,42 +855,42 @@ export default function ProfileScreen() {
               </button>
             </div>
           </div>
-          
+
           {/* Account Section */}
           <SectionHeader icon="👤" title="គណនី" />
-          
+
           <div style={{
             background: '#fff',
             borderRadius: '16px',
             padding: '4px 16px',
             boxShadow: '0 4px 15px rgba(0,0,0,0.06)',
           }}>
-            <SettingItem 
-              icon="📱" 
-              title="លេខទូរស័ព្ទ"
-              subtitle={userData.phone}
+            <SettingItem
+              icon="📧"
+              title="អ៊ីមែល"
+              subtitle={profile?.email || 'Not set'}
             />
-            
-            <SettingItem 
-              icon="☁️" 
+
+            <SettingItem
+              icon="☁️"
               title="បានធ្វើសមកាលកម្ម"
-              subtitle={`✓ ${userData.lastSync}`}
+              subtitle="✓ ថ្ងៃនេះ"
             />
-            
-            <SettingItem 
-              icon="🚪" 
+
+            <SettingItem
+              icon="🚪"
               title="ចាកចេញ"
               onClick={() => setShowSignOutModal(true)}
             />
-            
-            <SettingItem 
-              icon="🗑️" 
+
+            <SettingItem
+              icon="🗑️"
               title="លុបគណនី"
               danger
               onClick={() => setShowDeleteModal(true)}
             />
           </div>
-          
+
           {/* App Info Footer */}
           <div style={{
             marginTop: '32px',
@@ -778,7 +904,7 @@ export default function ProfileScreen() {
             }}>
               កុងរៀន v1.0.0
             </div>
-            
+
             <div style={{
               display: 'flex',
               justifyContent: 'center',
@@ -809,7 +935,7 @@ export default function ProfileScreen() {
                 ជំនួយ
               </a>
             </div>
-            
+
             <div style={{
               fontFamily: 'Nunito, sans-serif',
               fontSize: '11px',
@@ -821,7 +947,7 @@ export default function ProfileScreen() {
           </div>
         </div>
       </div>
-      
+
       {/* Sign Out Modal */}
       {showSignOutModal && (
         <ConfirmModal
@@ -829,14 +955,11 @@ export default function ProfileScreen() {
           message="តើអ្នកប្រាកដថាចង់ចាកចេញពីគណនីរបស់អ្នក?"
           confirmText="ចាកចេញ"
           cancelText="បោះបង់"
-          onConfirm={() => {
-            console.log('Sign out');
-            setShowSignOutModal(false);
-          }}
+          onConfirm={handleSignOut}
           onCancel={() => setShowSignOutModal(false)}
         />
       )}
-      
+
       {/* Delete Account Modal */}
       {showDeleteModal && (
         <ConfirmModal
@@ -846,12 +969,12 @@ export default function ProfileScreen() {
           cancelText="បោះបង់"
           danger
           onConfirm={() => {
-            console.log('Delete account');
-            setShowDeleteModal(false);
+            console.log('Delete account')
+            setShowDeleteModal(false)
           }}
           onCancel={() => setShowDeleteModal(false)}
         />
       )}
     </div>
-  );
+  )
 }

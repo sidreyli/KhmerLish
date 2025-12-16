@@ -3,6 +3,16 @@ import { progressService } from '../services/progress.service'
 import { userService } from '../services/user.service'
 import { useAuth } from '../contexts/AuthContext'
 
+export function useUserSettings() {
+  const { user } = useAuth()
+
+  return useQuery({
+    queryKey: ['userSettings', user?.id],
+    queryFn: () => userService.getSettings(user.id),
+    enabled: !!user?.id
+  })
+}
+
 export function useOverallStats() {
   const { user } = useAuth()
 
