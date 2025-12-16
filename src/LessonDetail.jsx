@@ -1,19 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useLessonWithVocabulary, useLessonProgress } from './hooks/useLessons'
+import { useBestQuizScore, useQuizAttempts } from './hooks/useQuiz'
+import { useToast } from './components/Toast'
 
 // ============================================
 // LESSON DETAIL SCREEN
 // The exciting moment before an adventure
 // ============================================
-
-// Sample vocabulary data
-const vocabularyPreview = [
-  { english: 'Hello', khmer: 'សួស្តី', pronunciation: 'suostei' },
-  { english: 'Good morning', khmer: 'អរុណសួស្តី', pronunciation: 'arun suostei' },
-  { english: 'Thank you', khmer: 'អរគុណ', pronunciation: 'orkun' },
-  { english: 'Goodbye', khmer: 'លាហើយ', pronunciation: 'lea haey' },
-  { english: 'How are you?', khmer: 'សុខសប្បាយទេ?', pronunciation: 'sok sabay te?' },
-]
 
 // Back Button
 const BackButton = ({ onClick }) => (
@@ -503,65 +497,156 @@ const HeroIllustration = ({ scrollY }) => {
   )
 }
 
+// Loading Skeleton
+const LoadingSkeleton = () => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    background: 'var(--color-background)',
+    padding: 'var(--space-5)',
+  }}>
+    <div className="loading-spinner" style={{ marginBottom: 'var(--space-4)' }} />
+    <p style={{
+      fontFamily: 'var(--font-khmer)',
+      fontSize: 'var(--text-body)',
+      color: 'var(--color-text-secondary)',
+    }}>
+      កំពុងផ្ទុកមេរៀន...
+    </p>
+  </div>
+)
+
+// Error State
+const ErrorState = ({ message, onRetry }) => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    background: 'var(--color-background)',
+    padding: 'var(--space-5)',
+    textAlign: 'center',
+  }}>
+    <span style={{ fontSize: '3rem', marginBottom: 'var(--space-3)' }}>😔</span>
+    <h2 style={{
+      fontFamily: 'var(--font-khmer)',
+      fontSize: 'var(--text-h3)',
+      color: 'var(--color-text-primary)',
+      marginBottom: 'var(--space-2)',
+    }}>
+      មានបញ្ហាកើតឡើង
+    </h2>
+    <p style={{
+      fontFamily: 'var(--font-english)',
+      fontSize: 'var(--text-caption)',
+      color: 'var(--color-text-secondary)',
+      marginBottom: 'var(--space-4)',
+    }}>
+      {message || 'Could not load lesson'}
+    </p>
+    <button
+      onClick={onRetry}
+      style={{
+        padding: '12px 24px',
+        background: 'var(--color-primary)',
+        border: 'none',
+        borderRadius: 'var(--radius-md)',
+        fontFamily: 'var(--font-khmer)',
+        fontSize: 'var(--text-body)',
+        fontWeight: 600,
+        color: 'white',
+        cursor: 'pointer',
+      }}
+    >
+      ព្យាយាមម្តងទៀត
+    </button>
+  </div>
+)
+
 // Main Lesson Detail Component
 function LessonDetail() {
   const [isBookmarked, setIsBookmarked] = useState(false)
   const [scrollY, setScrollY] = useState(0)
-  const [isDownloading, setIsDownloading] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState(0)
   const scrollRef = useRef(null)
 
-  // Lesson status: 'not-downloaded', 'downloaded', 'in-progress', 'completed'
-  const [lessonStatus, setLessonStatus] = useState('in-progress')
+  const navigate = useNavigate()
+  const { lessonId } = useParams()
+  const toast = useToast()
 
-  // Lesson data
-  const lesson = {
-    titleKhmer: 'ការស្វាគមន៍',
-    titleEnglish: 'Basic Greetings',
-    level: 'A1',
-    category: 'រាល់ថ្ងៃ',
-    wordCount: 10,
-    duration: '~15 នាទី',
-    xpReward: '+50 XP',
-    downloadSize: '2.3 MB',
-    description: 'រៀនពាក្យស្វាគមន៍សំខាន់ៗសម្រាប់ការជួបមនុស្សថ្មី។ មេរៀននេះនឹងជួយអ្នកឱ្យចេះស្វាគមន៍ និងសំណេះសំណាលជាមួយមនុស្សថ្មីបានដោយទំនុកចិត្ត។',
-    progress: 60,
-    wordsLearned: 6,
-    quizzesTaken: 1,
-    bestScore: 95,
+  // Fetch lesson data with vocabulary
+  const {
+    data: lessonData,
+    isLoading: lessonLoading,
+    error: lessonError,
+    refetch: refetchLesson
+  } = useLessonWithVocabulary(lessonId)
+
+  // Fetch user's progress for this lesson
+  const { data: progressData } = useLessonProgress(lessonId)
+
+  // Fetch quiz stats
+  const { data: bestScore } = useBestQuizScore(lessonId)
+  const { data: quizAttempts } = useQuizAttempts(lessonId)
+
+  // Calculate lesson status based on progress
+  const getLessonStatus = () => {
+    if (!progressData) return 'not-started'
+    if (progressData.status === 'completed') return 'completed'
+    if (progressData.status === 'in_progress') return 'in-progress'
+    return 'not-started'
   }
+
+  const lessonStatus = getLessonStatus()
+
+  // Prepare display data
+  const lesson = lessonData ? {
+    titleKhmer: lessonData.title_khmer,
+    titleEnglish: lessonData.title_english,
+    level: lessonData.level,
+    category: lessonData.category?.name_khmer || 'មេរៀន',
+    wordCount: lessonData.word_count || lessonData.vocabulary?.length || 0,
+    duration: `~${lessonData.estimated_duration || 15} នាទី`,
+    xpReward: `+${lessonData.xp_reward || 50} XP`,
+    description: lessonData.description_khmer,
+    progress: progressData?.progress_percent || 0,
+    wordsLearned: progressData?.words_learned || 0,
+    quizzesTaken: quizAttempts?.length || 0,
+    bestScore: bestScore || 0,
+    vocabulary: lessonData.vocabulary || [],
+    iconEmoji: lessonData.icon_emoji || '📚',
+    gradientColors: lessonData.gradient_colors || ['#FFE4B5', '#FFD700'],
+  } : null
+
+  const vocabularyPreview = lesson?.vocabulary?.slice(0, 5).map(v => ({
+    english: v.english,
+    khmer: v.khmer,
+    pronunciation: v.phonetic_khmer || v.ipa,
+  })) || []
 
   const handleScroll = (e) => {
     setScrollY(e.target.scrollTop)
   }
 
-  const handleDownload = () => {
-    setIsDownloading(true)
-    setDownloadProgress(0)
-    
-    // Simulate download progress
-    const interval = setInterval(() => {
-      setDownloadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setIsDownloading(false)
-          setLessonStatus('downloaded')
-          return 100
-        }
-        return prev + 10
-      })
-    }, 300)
-  }
-
   const handlePlayAudio = (word) => {
-    console.log('Playing audio for:', word.english)
-    // In real app, would play audio
+    // Audio skipped for now as per user preference
+    toast.info('Audio will be available soon', 'សម្លេងនឹងមានក្នុងពេលឆាប់ៗ')
   }
 
   const canTakeQuiz = lessonStatus === 'in-progress' || lessonStatus === 'completed'
 
-  const navigate = useNavigate()
-  const { lessonId } = useParams()
+  // Show loading state
+  if (lessonLoading) {
+    return <LoadingSkeleton />
+  }
+
+  // Show error state
+  if (lessonError || !lesson) {
+    return <ErrorState message={lessonError?.message} onRetry={refetchLesson} />
+  }
 
   return (
     <div className="screen screen-fullscreen" style={{
@@ -780,7 +865,7 @@ function LessonDetail() {
           </div>
 
           {/* Progress Section (if started) */}
-          {(lessonStatus === 'in-progress' || lessonStatus === 'completed') && (
+          {(lessonStatus === 'in-progress' || lessonStatus === 'completed') && lesson.progress > 0 && (
             <div 
               className="animate-in"
               style={{ marginBottom: 'var(--space-5)', animationDelay: '0.25s' }}
@@ -806,17 +891,8 @@ function LessonDetail() {
               animationDelay: '0.3s',
             }}
           >
-            {lessonStatus === 'not-downloaded' && (
-              <DownloadButton
-                downloadSize={lesson.downloadSize}
-                isDownloading={isDownloading}
-                downloadProgress={downloadProgress}
-                onDownload={handleDownload}
-              />
-            )}
-
-            {lessonStatus === 'downloaded' && (
-              <PrimaryButton onClick={() => setLessonStatus('in-progress')}>
+            {lessonStatus === 'not-started' && (
+              <PrimaryButton onClick={() => navigate(`/flashcard/${lessonId}`)}>
                 ចាប់ផ្តើមមេរៀន
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                   <polygon points="5 3 19 12 5 21 5 3" />
@@ -825,7 +901,7 @@ function LessonDetail() {
             )}
 
             {lessonStatus === 'in-progress' && (
-              <PrimaryButton onClick={() => navigate(`/flashcard/${lessonId || 'greetings'}`)}>
+              <PrimaryButton onClick={() => navigate(`/flashcard/${lessonId}`)}>
                 បន្តរៀន
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="5" y1="12" x2="19" y2="12" />
@@ -835,7 +911,7 @@ function LessonDetail() {
             )}
 
             {lessonStatus === 'completed' && (
-              <PrimaryButton onClick={() => navigate(`/flashcard/${lessonId || 'greetings'}`)}>
+              <PrimaryButton onClick={() => navigate(`/flashcard/${lessonId}`)}>
                 ពិនិត្យមើលឡើងវិញ
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="23 4 23 10 17 10" />
@@ -846,7 +922,7 @@ function LessonDetail() {
 
             <QuizButton
               enabled={canTakeQuiz}
-              onClick={() => navigate(`/quiz/${lessonId || 'greetings'}`)}
+              onClick={() => navigate(`/quiz/${lessonId}`)}
             />
           </div>
         </div>
