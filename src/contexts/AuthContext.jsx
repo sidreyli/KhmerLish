@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { clearUserData } from '../lib/db'
 
@@ -10,37 +10,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user)
-        setIsAuthenticated(true)
-        loadProfile(session.user.id)
-      }
-      setLoading(false)
-    })
-
-    // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          setUser(session.user)
-          setIsAuthenticated(true)
-          await loadProfile(session.user.id)
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setProfile(null)
-          setIsAuthenticated(false)
-          await clearUserData()
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const loadProfile = async (userId) => {
+  const loadProfile = useCallback(async (userId) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -48,12 +18,100 @@ export function AuthProvider({ children }) {
         .eq('id', userId)
         .single()
 
-      if (error) throw error
+      if (error) {
+        // If profile doesn't exist, create a minimal one
+        if (error.code === 'PGRST116') {
+          console.log('Profile not found, user may need to complete signup')
+          // Return a minimal profile to prevent redirect loops
+          setProfile({
+            id: userId,
+            onboarding_completed: false,
+            xp: 0,
+            current_streak: 0
+          })
+          return
+        }
+        throw error
+      }
       setProfile(data)
     } catch (error) {
       console.error('Failed to load profile:', error)
+      // Set a minimal profile to prevent blank page
+      setProfile({
+        id: userId,
+        onboarding_completed: false,
+        xp: 0,
+        current_streak: 0
+      })
     }
-  }
+  }, [])
+
+  const handleSignOut = useCallback(async () => {
+    setUser(null)
+    setProfile(null)
+    setIsAuthenticated(false)
+    try {
+      await clearUserData()
+    } catch (error) {
+      console.error('Failed to clear user data:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error('Error getting session:', error)
+          if (mounted) setLoading(false)
+          return
+        }
+
+        if (session?.user && mounted) {
+          setUser(session.user)
+          setIsAuthenticated(true)
+          await loadProfile(session.user.id)
+        }
+      } catch (error) {
+        console.error('Auth init error:', error)
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+
+    initAuth()
+
+    // Subscribe to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth event:', event)
+
+        if (!mounted) return
+
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user) {
+            setUser(session.user)
+            setIsAuthenticated(true)
+            await loadProfile(session.user.id)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          await handleSignOut()
+        } else if (event === 'USER_UPDATED') {
+          if (session?.user) {
+            setUser(session.user)
+          }
+        }
+      }
+    )
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [loadProfile, handleSignOut])
 
   const signUp = async (email, password) => {
     const { data, error } = await supabase.auth.signUp({

@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { LoginForm } from './components/auth/LoginForm'
 import { SignUpForm } from './components/auth/SignUpForm'
 import { ForgotPasswordForm } from './components/auth/ForgotPasswordForm'
 import './LoginScreen.css'
 
 function LoginScreen() {
-  const navigate = useNavigate()
   const [view, setView] = useState('login') // 'login' | 'signup' | 'forgot'
 
+  // Don't navigate manually - let RedirectIfAuthenticated handle it
+  // This prevents race conditions on mobile
   const handleSuccess = () => {
-    navigate('/onboarding')
+    // The auth state change will trigger RedirectIfAuthenticated
+    // which will navigate to the correct page
   }
 
   return (
