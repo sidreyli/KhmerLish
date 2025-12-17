@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
+import { useTheme } from './contexts/ThemeContext'
 import { useAchievements, useOverallStats } from './hooks/useProgress'
 import { useLearnedWordsCount } from './hooks/useVocabulary'
 import { useTotalQuizzesTaken } from './hooks/useQuiz'
@@ -304,39 +305,45 @@ function Toggle({ value, onChange }) {
 }
 
 // Theme Selector
-function ThemeSelector({ value, onChange }) {
-  const options = [
-    { id: 'light', label: '☀️' },
-    { id: 'dark', label: '🌙' },
-    { id: 'system', label: '⚙️' },
-  ]
-
+function ThemeSelector({ isDark, onToggle }) {
   return (
     <div style={{
       display: 'flex',
       gap: '4px',
-      background: '#F0F0F0',
+      background: 'var(--color-border-light)',
       borderRadius: '10px',
       padding: '4px',
     }}>
-      {options.map(opt => (
-        <button
-          key={opt.id}
-          onClick={() => onChange(opt.id)}
-          style={{
-            padding: '6px 12px',
-            borderRadius: '8px',
-            border: 'none',
-            background: value === opt.id ? '#fff' : 'transparent',
-            boxShadow: value === opt.id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
-            cursor: 'pointer',
-            fontSize: '14px',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
+      <button
+        onClick={() => !isDark && onToggle()}
+        style={{
+          padding: '6px 12px',
+          borderRadius: '8px',
+          border: 'none',
+          background: !isDark ? 'var(--color-surface)' : 'transparent',
+          boxShadow: !isDark ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+          cursor: 'pointer',
+          fontSize: '14px',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        ☀️
+      </button>
+      <button
+        onClick={() => isDark && onToggle()}
+        style={{
+          padding: '6px 12px',
+          borderRadius: '8px',
+          border: 'none',
+          background: isDark ? 'var(--color-surface)' : 'transparent',
+          boxShadow: isDark ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+          cursor: 'pointer',
+          fontSize: '14px',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        🌙
+      </button>
     </div>
   )
 }
@@ -545,6 +552,7 @@ const defaultAchievements = [
 export default function ProfileScreen() {
   const navigate = useNavigate()
   const { profile, signOut, isLoading: authLoading } = useAuth()
+  const { theme, isDark, toggleTheme } = useTheme()
 
   // Fetch real data
   const { data: achievements = [] } = useAchievements()
@@ -555,7 +563,6 @@ export default function ProfileScreen() {
   // Settings state
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
-  const [theme, setTheme] = useState('light')
   const [reminderTime, setReminderTime] = useState('09:00')
   const [showSignOutModal, setShowSignOutModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -768,7 +775,7 @@ export default function ProfileScreen() {
               icon="🎨"
               title="ស្បែក"
             >
-              <ThemeSelector value={theme} onChange={setTheme} />
+              <ThemeSelector isDark={isDark} onToggle={toggleTheme} />
             </SettingItem>
 
             <SettingItem

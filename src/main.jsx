@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 // Context Providers
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import { ToastProvider } from './components/Toast'
 import ErrorBoundary from './components/ErrorBoundary'
 
@@ -184,13 +185,15 @@ function App() {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
-        </AuthProvider>
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>,
 )
