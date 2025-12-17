@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useVocabulary, useVocabularyProgress, useRecordFlashcardReview } from './hooks/useVocabulary'
 import { useLesson, useUpdateLessonProgress } from './hooks/useLessons'
 import { useAuth } from './contexts/AuthContext'
+import { useSpeech } from './hooks/useSpeech'
 import { SM2 } from './services/spaced-repetition'
 
 // ============================================
@@ -232,7 +233,7 @@ const AudioButton = ({ size = 'large', onClick, isPlaying }) => {
 }
 
 // Flashcard Component
-const Flashcard = ({ word, isFlipped, onFlip }) => (
+const Flashcard = ({ word, isFlipped, onFlip, onSpeakEnglish, onSpeakKhmer, isSpeaking }) => (
   <div
     onClick={!isFlipped ? onFlip : undefined}
     style={{
@@ -303,9 +304,10 @@ const Flashcard = ({ word, isFlipped, onFlip }) => (
 
         <AudioButton
           size="large"
+          isPlaying={isSpeaking}
           onClick={(e) => {
             e.stopPropagation()
-            // TODO: Play English audio
+            onSpeakEnglish?.(word.english)
           }}
         />
 
@@ -380,9 +382,10 @@ const Flashcard = ({ word, isFlipped, onFlip }) => (
 
         <AudioButton
           size="small"
+          isPlaying={isSpeaking}
           onClick={(e) => {
             e.stopPropagation()
-            // TODO: Play Khmer audio
+            onSpeakKhmer?.(word.khmer)
           }}
         />
 
@@ -799,6 +802,9 @@ function FlashcardScreen() {
   const recordReview = useRecordFlashcardReview()
   const updateLessonProgress = useUpdateLessonProgress()
 
+  // Speech synthesis
+  const { speakEnglish, speakKhmer, isSpeaking, stop: stopSpeaking } = useSpeech()
+
   // Local state
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isFlipped, setIsFlipped] = useState(false)
@@ -833,6 +839,7 @@ function FlashcardScreen() {
   const handleRate = async (rating) => {
     if (!currentWord || !user) return
 
+    stopSpeaking() // Stop any ongoing speech
     setIsRatingDisabled(true)
     setLastRating(rating)
     setShowSuccess(true)
@@ -875,6 +882,7 @@ function FlashcardScreen() {
   }
 
   const handleSkip = () => {
+    stopSpeaking() // Stop any ongoing speech
     setIsFlipped(false)
     if (currentIndex + 1 >= totalCards) {
       // Update lesson progress with current words studied
@@ -891,10 +899,20 @@ function FlashcardScreen() {
     }
   }
 
-  const handleReplay = () => {
-    // TODO: Implement audio replay at current speed
-    console.log('Replay audio at speed:', speed)
-  }
+  const handleReplay = useCallback(() => {
+    if (!currentWord) return
+
+    // Map speed setting to speech rate
+    const speedRates = { 0.5: 0.5, 1: 0.9, 1.5: 1.2 }
+    const rate = speedRates[speed] || 0.9
+
+    // Play the word based on which side is showing
+    if (isFlipped) {
+      speakKhmer(currentWord.khmer, rate)
+    } else {
+      speakEnglish(currentWord.english, rate)
+    }
+  }, [currentWord, speed, isFlipped, speakEnglish, speakKhmer])
 
   const handleBack = () => {
     navigate(`/lesson/${lessonId}`)
@@ -1070,6 +1088,9 @@ function FlashcardScreen() {
             word={currentWord}
             isFlipped={isFlipped}
             onFlip={handleFlip}
+            onSpeakEnglish={speakEnglish}
+            onSpeakKhmer={speakKhmer}
+            isSpeaking={isSpeaking}
           />
         </div>
 
